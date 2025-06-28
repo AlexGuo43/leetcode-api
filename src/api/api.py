@@ -338,6 +338,290 @@ async def get_daily_challenge():
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/problem/{problem_slug}/solutions", tags=["Solutions"])
+async def get_solution_articles(
+    problem_slug: str, 
+    order_by: str = "HOT", 
+    skip: int = 0, 
+    first: int = 15,
+    user_input: str = "",
+    tag_slugs: list[str] = None
+):
+    """
+    Get solution articles for a specific problem.
+    
+    Args:
+        problem_slug: The problem's title slug (e.g., "find-subsequence-of-length-k-with-the-largest-sum")
+        order_by: Sort order - "HOT", "NEWEST", "OLDEST" (default: "HOT")
+        skip: Number of articles to skip (default: 0)
+        first: Number of articles to return (default: 15)
+        user_input: Search filter for articles (default: "")
+        tag_slugs: List of tag slugs to filter by (default: None)
+    """
+    if tag_slugs is None:
+        tag_slugs = []
+    
+    query = """
+    query ugcArticleSolutionArticles($questionSlug: String!, $orderBy: ArticleOrderByEnum, $userInput: String, $tagSlugs: [String!], $skip: Int, $before: String, $after: String, $first: Int, $last: Int, $isMine: Boolean) {
+        ugcArticleSolutionArticles(
+            questionSlug: $questionSlug
+            orderBy: $orderBy
+            userInput: $userInput
+            tagSlugs: $tagSlugs
+            skip: $skip
+            first: $first
+            before: $before
+            after: $after
+            last: $last
+            isMine: $isMine
+        ) {
+            totalNum
+            pageInfo {
+                hasNextPage
+            }
+            edges {
+                node {
+                    ...ugcSolutionArticleFragment
+                }
+            }
+        }
+    }
+    
+    fragment ugcSolutionArticleFragment on SolutionArticleNode {
+        uuid
+        title
+        slug
+        summary
+        author {
+            realName
+            userAvatar
+            userSlug
+            userName
+            nameColor
+            certificationLevel
+            activeBadge {
+                icon
+                displayName
+            }
+        }
+        articleType
+        thumbnail
+        summary
+        createdAt
+        updatedAt
+        status
+        isLeetcode
+        canSee
+        canEdit
+        isMyFavorite
+        chargeType
+        myReactionType
+        topicId
+        hitCount
+        hasVideoArticle
+        reactions {
+            count
+            reactionType
+        }
+        title
+        slug
+        tags {
+            name
+            slug
+            tagType
+        }
+        topic {
+            id
+            topLevelCommentCount
+        }
+    }
+    """
+    
+    payload = {
+        "query": query,
+        "variables": {
+            "questionSlug": problem_slug,
+            "orderBy": order_by,
+            "userInput": user_input,
+            "tagSlugs": tag_slugs,
+            "skip": skip,
+            "first": first,
+            "before": None,
+            "after": None,
+            "last": None,
+            "isMine": False
+        },
+        "operationName": "ugcArticleSolutionArticles"
+    }
+    
+    try:
+        data = await fetch_with_retry(leetcode_url, payload)
+        if not data or "data" not in data:
+            raise HTTPException(status_code=404, detail="Solution articles not found")
+        
+        return data["data"]["ugcArticleSolutionArticles"]
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching solution articles: {str(e)}")
+
+
+@app.get("/problem/{problem_slug}/solutions/search", tags=["Solutions"])
+async def search_solution_articles(
+    problem_slug: str,
+    search_query: str,
+    order_by: str = "HOT",
+    skip: int = 0,
+    first: int = 15
+):
+    """
+    Search solution articles for a specific problem.
+    """
+    return await get_solution_articles(
+        problem_slug=problem_slug,
+        order_by=order_by,
+        skip=skip,
+        first=first,
+        user_input=search_query,
+        tag_slugs=[]
+    )
+
+@app.get("/solution/{solution_id}", tags=["Solutions"])
+async def get_solution_content(solution_id: str, id_type: str = "topic"):
+    """
+    Get the full content of a specific solution article.
+    
+    Args:
+        solution_id: The solution identifier (topic ID or article ID)
+        id_type: Type of ID - "topic" for topicId or "article" for articleId (default: "topic")
+    
+    Returns:
+        Full solution article with content, navigation links, and metadata
+    """
+    
+    query = """
+    query ugcArticleSolutionArticle($articleId: ID, $topicId: ID) {
+        ugcArticleSolutionArticle(articleId: $articleId, topicId: $topicId) {
+            ...ugcSolutionArticleFragment
+            content
+            isSerialized
+            isAuthorArticleReviewer
+            scoreInfo {
+                scoreCoefficient
+            }
+            prev {
+                uuid
+                slug
+                topicId
+                title
+            }
+            next {
+                uuid
+                slug
+                topicId
+                title
+            }
+        }
+    }
+    
+    fragment ugcSolutionArticleFragment on SolutionArticleNode {
+        uuid
+        title
+        slug
+        summary
+        author {
+            realName
+            userAvatar
+            userSlug
+            userName
+            nameColor
+            certificationLevel
+            activeBadge {
+                icon
+                displayName
+            }
+        }
+        articleType
+        thumbnail
+        summary
+        createdAt
+        updatedAt
+        status
+        isLeetcode
+        canSee
+        canEdit
+        isMyFavorite
+        chargeType
+        myReactionType
+        topicId
+        hitCount
+        hasVideoArticle
+        reactions {
+            count
+            reactionType
+        }
+        title
+        slug
+        tags {
+            name
+            slug
+            tagType
+        }
+        topic {
+            id
+            topLevelCommentCount
+        }
+    }
+    """
+    
+    # Set up variables based on ID type
+    variables = {}
+    if id_type.lower() == "topic":
+        variables["topicId"] = solution_id
+        variables["articleId"] = None
+    elif id_type.lower() == "article":
+        variables["articleId"] = solution_id
+        variables["topicId"] = None
+    else:
+        raise HTTPException(status_code=400, detail="id_type must be 'topic' or 'article'")
+    
+    payload = {
+        "query": query,
+        "variables": variables,
+        "operationName": "ugcArticleSolutionArticle"
+    }
+    
+    try:
+        data = await fetch_with_retry(leetcode_url, payload)
+        if not data or "data" not in data or not data["data"]["ugcArticleSolutionArticle"]:
+            raise HTTPException(status_code=404, detail="Solution article not found")
+        
+        return data["data"]["ugcArticleSolutionArticle"]
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching solution content: {str(e)}")
+
+
+@app.get("/solution/topic/{topic_id}", tags=["Solutions"])
+async def get_solution_by_topic_id(topic_id: str):
+    """
+    Get solution content by topic ID (convenience endpoint).
+    
+    Args:
+        topic_id: The topic ID of the solution
+    """
+    return await get_solution_content(topic_id, "topic")
+
+
+@app.get("/solution/article/{article_id}", tags=["Solutions"])
+async def get_solution_by_article_id(article_id: str):
+    """
+    Get solution content by article ID (convenience endpoint).
+    
+    Args:
+        article_id: The article ID of the solution
+    """
+    return await get_solution_content(article_id, "article")
+
 @app.get("/health", tags=["Utility"])
 async def health_check():
     return {"status": "ok", "timestamp": time.time()}

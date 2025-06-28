@@ -99,6 +99,7 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+lc-api/
 
 # Spyder project settings
 .spyderproject
