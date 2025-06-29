@@ -635,7 +635,7 @@ async def home():
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8081/"], # add prod frontend later
+    allow_origins=["*"], # add prod frontend later
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
