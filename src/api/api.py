@@ -465,6 +465,36 @@ async def get_solution_articles(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching solution articles: {str(e)}")
 
+@app.get("/problem/{slug}/template", tags=["Problems"])
+async def get_problem_template(slug: str):
+    """
+    Fetch the code template definitions (in all supported languages) for a given problem slug.
+    """
+    query = """
+    query questionEditorData($titleSlug: String!) {
+        question(titleSlug: $titleSlug) {
+            codeDefinition
+        }
+    }
+    """
+    payload = {
+        "query": query,
+        "variables": {"titleSlug": slug},
+        "operationName": "questionEditorData"
+    }
+
+    data = await fetch_with_retry(leetcode_url, payload)
+    if not data or "data" not in data or not data["data"]["question"]:
+        raise HTTPException(status_code=404, detail="Code definition not found")
+
+    # Parse JSON string for better frontend use
+    try:
+        import json
+        code_defs = json.loads(data["data"]["question"]["codeDefinition"])
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error parsing code definitions: {str(e)}")
+
+    return code_defs
 
 @app.get("/problem/{problem_slug}/solutions/search", tags=["Solutions"])
 async def search_solution_articles(
